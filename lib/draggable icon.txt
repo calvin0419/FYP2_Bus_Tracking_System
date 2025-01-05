@@ -1,0 +1,38 @@
+Positioned(
+            left: _xPosition,
+            top: _yPosition,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  // Update the position based on drag movements
+                  _xPosition += details.delta.dx;
+                  _yPosition += details.delta.dy;
+                });
+              },
+              onPanEnd: (details) {
+                setState(() {
+                  // Snap to the closest side when drag ends
+                  _xPosition = _xPosition < MediaQuery.of(context).size.width / 2
+                      ? 0 // Snap to the left side
+                      : MediaQuery.of(context).size.width - 48; // Snap to the right side
+                });
+              },
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ProfileScreen()),
+                );
+              },
+              child: ClipOval(
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  color: Colors.black,
+                  child: Icon(
+                    Icons.person,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),

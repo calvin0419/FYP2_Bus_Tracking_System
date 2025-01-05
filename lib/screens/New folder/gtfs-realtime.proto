@@ -1,0 +1,175 @@
+syntax = "proto3";
+
+package transit_realtime;
+
+// Message representing the entire GTFS Realtime feed.
+message FeedMessage {
+  FeedHeader header = 1;
+  repeated FeedEntity entity = 2;
+}
+
+// Metadata about the GTFS Realtime feed.
+message FeedHeader {
+  string gtfs_realtime_version = 1;
+  Incrementality incrementality = 2;
+  uint64 timestamp = 3;
+
+  enum Incrementality {
+    FULL_DATASET = 0; // Full update of the dataset.
+    DIFFERENTIAL = 1; // Only includes updates since the last dataset.
+  }
+}
+
+// A single update within the GTFS Realtime feed, such as a vehicle position or trip update.
+message FeedEntity {
+  string id = 1;
+  bool is_deleted = 2;
+  TripUpdate trip_update = 3;
+  VehiclePosition vehicle = 4;
+  Alert alert = 5;
+}
+
+// Message representing a trip update, including delays or changes in schedule.
+message TripUpdate {
+  TripDescriptor trip = 1;
+  VehicleDescriptor vehicle = 3;
+  uint64 timestamp = 4;
+  repeated StopTimeUpdate stop_time_update = 5;
+
+  // Nested message describing scheduled stops for this trip.
+  message StopTimeEvent {
+    int32 delay = 1;
+    int64 time = 2;
+    int32 uncertainty = 3;
+  }
+
+  // Update on the scheduled arrival/departure time for a specific stop.
+  message StopTimeUpdate {
+    string stop_id = 1;
+    StopTimeEvent arrival = 2;
+    StopTimeEvent departure = 3;
+
+    enum ScheduleRelationship {
+      SCHEDULED = 0;
+      SKIPPED = 1;
+      NO_DATA = 2;
+    }
+
+    ScheduleRelationship schedule_relationship = 4;
+  }
+}
+
+// Message representing the position of a vehicle.
+message VehiclePosition {
+  TripDescriptor trip = 1;
+  VehicleDescriptor vehicle = 2;
+  Position position = 3;
+  uint64 timestamp = 4;
+  CongestionLevel congestion_level = 5;
+  VehicleStopStatus current_status = 6;
+  string stop_id = 7;
+
+  enum VehicleStopStatus {
+    INCOMING_AT = 0;
+    STOPPED_AT = 1;
+    IN_TRANSIT_TO = 2;
+  }
+
+  enum CongestionLevel {
+    UNKNOWN_CONGESTION_LEVEL = 0;
+    RUNNING_SMOOTHLY = 1;
+    STOP_AND_GO = 2;
+    CONGESTION = 3;
+    SEVERE_CONGESTION = 4;
+  }
+}
+
+// A geographical position, including latitude, longitude, and optional bearing.
+message Position {
+  float latitude = 1;
+  float longitude = 2;
+  float bearing = 3;
+  float odometer = 4;
+  float speed = 5;
+}
+
+// A descriptor for a trip, including route and start information.
+message TripDescriptor {
+  string trip_id = 1;
+  string route_id = 2;
+  string start_time = 3;
+  string start_date = 4;
+
+  enum ScheduleRelationship {
+    SCHEDULED = 0;
+    ADDED = 1;
+    UNSCHEDULED = 2;
+    CANCELED = 3;
+  }
+
+  ScheduleRelationship schedule_relationship = 5;
+}
+
+// A descriptor for a specific vehicle, including an ID and label.
+message VehicleDescriptor {
+  string id = 1;
+  string label = 2;
+  string license_plate = 3;
+}
+
+// An alert, which can include notifications about delays or cancellations.
+message Alert {
+  repeated TimeRange active_period = 1;
+  repeated EntitySelector informed_entity = 5;
+  Cause cause = 6;
+  Effect effect = 7;
+  TranslatedString header_text = 8;
+  TranslatedString description_text = 10;
+  TranslatedString url = 11;
+
+  message TimeRange {
+    uint64 start = 1;
+    uint64 end = 2;
+  }
+
+  message EntitySelector {
+    string agency_id = 1;
+    string route_id = 2;
+    TripDescriptor trip = 3;
+    string stop_id = 4;
+  }
+
+  enum Cause {
+    UNKNOWN_CAUSE = 0;
+    OTHER_CAUSE = 1;
+    TECHNICAL_PROBLEM = 2;
+    STRIKE = 3;
+    WEATHER = 4;
+    MAINTENANCE = 5;
+    CONSTRUCTION = 6;
+    POLICE_ACTIVITY = 7;
+    MEDICAL_EMERGENCY = 8;
+  }
+
+  enum Effect {
+    NO_SERVICE = 0;
+    REDUCED_SERVICE = 1;
+    SIGNIFICANT_DELAYS = 2;
+    DETOUR = 3;
+    ADDITIONAL_SERVICE = 4;
+    MODIFIED_SERVICE = 5;
+    OTHER_EFFECT = 6;
+    UNKNOWN_EFFECT = 7;
+    STOP_MOVED = 8;
+  }
+}
+
+// Message for multilingual text (e.g., alert descriptions).
+message TranslatedString {
+  repeated Translation translation = 1;
+
+  message Translation {
+    string text = 1;
+    string language = 2;
+  }
+}

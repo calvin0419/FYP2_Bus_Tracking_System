@@ -1,0 +1,13 @@
+bottomNavigationBar: BottomNavigationBar(
+        items: [
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Bus Status'),
+          BottomNavigationBarItem(icon: Icon(Icons.directions_bus), label: 'Bus Information'),
+          BottomNavigationBarItem(icon: Icon(Icons.contact_phone), label: 'Contact Us'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        selectedItemColor: Colors.black,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
+      ),

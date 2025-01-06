@@ -29,7 +29,6 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Get the bottom padding to account for safe area
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(

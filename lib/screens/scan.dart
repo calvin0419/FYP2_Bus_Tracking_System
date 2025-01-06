@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
 /*import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,7 +22,6 @@ class _ScanScreenState extends State<ScanScreen> {
     _loadScanHistory();
   }
 
-  // Load scan history from SharedPreferences
   void _loadScanHistory() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -29,27 +29,22 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  // Save scan history to SharedPreferences
   void _saveScanHistory(String code) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     scanHistory.add(code);
     await prefs.setStringList('scanHistory', scanHistory);
   }
 
-  // Scan QR code from uploaded photo
   void _scanPhoto() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
-      // Here, you would add code to process the image and extract a QR code.
-      // Packages like `qr_code_tools` can help, though it might require platform-specific code.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Feature under development")),
       );
     }
   }
 
-  // Manual input dialog
   void _showManualInputDialog() {
     showDialog(
       context: context,
@@ -92,7 +87,6 @@ class _ScanScreenState extends State<ScanScreen> {
       appBar: AppBar(title: Text('Scan QR Code')),
       body: Column(
         children: [
-          // QR Code Scanner
           Expanded(
             flex: 5,
             child: QRView(
@@ -100,7 +94,6 @@ class _ScanScreenState extends State<ScanScreen> {
               onQRViewCreated: _onQRViewCreated,
             ),
           ),
-          // Control Panel
           Expanded(
             flex: 2,
             child: Column(
@@ -127,7 +120,6 @@ class _ScanScreenState extends State<ScanScreen> {
                     ),
                   ],
                 ),
-                // Display Scan History
                 Expanded(
                   child: ListView.builder(
                     itemCount: scanHistory.length,

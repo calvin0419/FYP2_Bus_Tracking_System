@@ -13,7 +13,6 @@ class _BusStatusScreenState extends State<BusStatusScreen> {
   @override
   void initState() {
     super.initState();
-    // Load status updates when the screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BusStatusProvider>(context, listen: false).loadStatusUpdates();
     });

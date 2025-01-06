@@ -8,6 +8,8 @@ import 'package:bus_tracking_system/services/bus_status_model.dart';
 import 'package:bus_tracking_system/services/bus_status_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:bus_tracking_system/services/bus_status_provider.dart';
+import 'package:bus_tracking_system/services/contact_message.dart';
+import 'package:bus_tracking_system/services/contact_service.dart';
 
 class AdminDashboard extends StatefulWidget {
   @override
@@ -876,9 +878,367 @@ class _UploadBusStatusScreenState extends State<UploadBusStatusScreen> {
   }
 }
 
-class ContactReceiveScreen extends StatelessWidget {
+class ContactReceiveScreen extends StatefulWidget {
+  @override
+  _ContactReceiveScreenState createState() => _ContactReceiveScreenState();
+}
+
+class _ContactReceiveScreenState extends State<ContactReceiveScreen> {
+  List<ContactMessage> messages = [];
+  bool isLoading = true;
+  final TextEditingController _replyController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+  }
+
+  Future<void> _loadMessages() async {
+    try {
+      final allMessages = await ContactService.getAllMessages();
+      setState(() {
+        messages = allMessages
+          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading messages: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  void _showReplyDialog(ContactMessage message) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          constraints: BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Reply to Message',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                SizedBox(height: 16),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        message.userEmail,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(message.content),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 24),
+                TextField(
+                  controller: _replyController,
+                  decoration: InputDecoration(
+                    labelText: 'Your reply',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                  ),
+                  maxLines: 4,
+                ),
+                SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _replyController.clear();
+                      },
+                      child: Text('Cancel'),
+                    ),
+                    SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: () async {
+                        if (_replyController.text.isNotEmpty) {
+                          final reply = MessageReply(
+                            id: DateTime.now()
+                                .millisecondsSinceEpoch
+                                .toString(),
+                            adminId: 'admin',
+                            content: _replyController.text,
+                            timestamp: DateTime.now(),
+                          );
+
+                          try {
+                            await ContactService.addReply(message.id, reply);
+                            Navigator.pop(context);
+                            _replyController.clear();
+                            _loadMessages();
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Reply sent successfully'),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to send reply'),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: Text('Send Reply'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Center(child: Text('Contact Receive'));
+    if (isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    return Scaffold(
+      body: messages.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.mark_email_unread_outlined,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'No messages yet',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'New messages will appear here',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              itemCount: messages.length,
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                return Card(
+                  elevation: 0,
+                  margin: EdgeInsets.only(bottom: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      dividerColor: Colors.transparent,
+                    ),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      title: Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              message.problemType,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      subtitle: Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.mail_outline,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                message.userEmail,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceVariant,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.schedule,
+                                          size: 16,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .secondary,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          message.timestamp
+                                              .toString()
+                                              .split('.')[0],
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 12),
+                                    Text(message.content),
+                                  ],
+                                ),
+                              ),
+                              if (message.replies.isNotEmpty) ...[
+                                Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Text(
+                                    'Replies',
+                                    style:
+                                        Theme.of(context).textTheme.titleSmall,
+                                  ),
+                                ),
+                                ...message.replies.map((reply) => Container(
+                                      margin: EdgeInsets.only(
+                                        left: 16,
+                                        bottom: 12,
+                                      ),
+                                      padding: EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .secondaryContainer
+                                            .withOpacity(0.5),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.schedule,
+                                                size: 16,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .secondary,
+                                              ),
+                                              SizedBox(width: 8),
+                                              Text(
+                                                reply.timestamp
+                                                    .toString()
+                                                    .split('.')[0],
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall,
+                                              ),
+                                            ],
+                                          ),
+                                          SizedBox(height: 8),
+                                          Text(reply.content),
+                                        ],
+                                      ),
+                                    )),
+                              ],
+                              SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: () => _showReplyDialog(message),
+                                icon: Icon(Icons.reply),
+                                label: Text('Reply'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _replyController.dispose();
+    super.dispose();
   }
 }

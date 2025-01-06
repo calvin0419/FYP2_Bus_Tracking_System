@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login.dart';
+import 'package:bus_tracking_system/services/contact_message.dart';
+import 'package:bus_tracking_system/services/contact_service.dart';
+import 'user_messages.dart';
 
 class ContactUsScreen extends StatefulWidget {
   @override
@@ -115,7 +118,7 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
     }
   }
 
-  void _submitMessage() {
+  void _submitMessage() async {
     FocusScope.of(context).unfocus();
     if (!isLoggedIn) {
       _showLoginPrompt();
@@ -123,23 +126,58 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
     }
 
     if (_contentController.text.isNotEmpty && _selectedProblem.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 8),
-              Text('Message sent successfully!'),
-            ],
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? userId = prefs.getString('userId');
+      String? userEmail = prefs.getString('userEmail');
+
+      if (userId == null || userEmail == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('User information not found. Please login again.'),
+            backgroundColor: Colors.red,
           ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
+        );
+        return;
+      }
+
+      final message = ContactMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: userId,
+        userEmail: userEmail,
+        problemType: _selectedProblem,
+        content: _contentController.text,
+        timestamp: DateTime.now(),
       );
-      _contentController.clear();
-      setState(() {
-        _selectedProblem = '';
-      });
+
+      try {
+        await ContactService.saveMessage(message);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Message sent successfully!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        _contentController.clear();
+        setState(() {
+          _selectedProblem = '';
+        });
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send message. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -208,12 +246,23 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
         appBar: AppBar(
           title: Text('Contact Us'),
           elevation: 0,
+          actions: [
+            IconButton(
+              icon: Icon(Icons.history),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => UserMessagesScreen()),
+                );
+              },
+              tooltip: 'View My Messages',
+            ),
+          ],
         ),
         body: SafeArea(
           child: Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom +
-                  80,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 80,
             ),
             child: SingleChildScrollView(
               child: Column(

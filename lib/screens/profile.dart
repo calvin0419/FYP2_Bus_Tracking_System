@@ -5,6 +5,7 @@ import 'login.dart';
 import 'register.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -115,6 +116,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _logout() async {
     final storageService = UserStorageService();
     await storageService.clearData();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('userId');
+    await prefs.remove('userEmail');
 
     Navigator.pushReplacement(
       context,

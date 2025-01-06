@@ -3,6 +3,8 @@ import 'register.dart';
 import 'package:bus_tracking_system/screens/navigation.dart';
 import 'package:bus_tracking_system/screens/user_storage_service.dart';
 import 'dart:async';
+import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'admin_login_screen.dart';
 
 void main() {
@@ -39,6 +41,74 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class OTPService {
+  static const String _otpKey = 'current_otp';
+  static const String _otpExpiryKey = 'otp_expiry';
+  static const int _otpLength = 6;
+  static const int _otpValidityMinutes = 5;
+
+  final Random _random = Random.secure();
+
+  Future<String> generateOTP(String phoneNumber) async {
+    String otp = '';
+    for (int i = 0; i < _otpLength; i++) {
+      otp += _random.nextInt(10).toString();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final expiryTime =
+        DateTime.now().add(Duration(minutes: _otpValidityMinutes));
+
+    await prefs.setString('${_otpKey}_$phoneNumber', otp);
+    await prefs.setString(
+        '${_otpExpiryKey}_$phoneNumber', expiryTime.toIso8601String());
+
+    return otp;
+  }
+
+  Future<bool> verifyOTP(String phoneNumber, String enteredOTP) async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedOTP = prefs.getString('${_otpKey}_$phoneNumber');
+    final expiryTimeStr = prefs.getString('${_otpExpiryKey}_$phoneNumber');
+
+    if (storedOTP == null || expiryTimeStr == null) {
+      return false;
+    }
+
+    final expiryTime = DateTime.parse(expiryTimeStr);
+    if (DateTime.now().isAfter(expiryTime)) {
+      await clearOTP(phoneNumber);
+      return false;
+    }
+
+    bool isValid = storedOTP == enteredOTP;
+    if (isValid) {
+      await clearOTP(phoneNumber);
+    }
+
+    return isValid;
+  }
+
+  Future<void> clearOTP(String phoneNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('${_otpKey}_$phoneNumber');
+    await prefs.remove('${_otpExpiryKey}_$phoneNumber');
+  }
+
+  Future<int> getRemainingTime(String phoneNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    final expiryTimeStr = prefs.getString('${_otpExpiryKey}_$phoneNumber');
+
+    if (expiryTimeStr == null) {
+      return 0;
+    }
+
+    final expiryTime = DateTime.parse(expiryTimeStr);
+    final remaining = expiryTime.difference(DateTime.now());
+    return remaining.inSeconds > 0 ? remaining.inSeconds : 0;
+  }
+}
+
 class LoginScreen extends StatefulWidget {
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -49,6 +119,7 @@ class _LoginScreenState extends State<LoginScreen>
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController otpController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final OTPService _otpService = OTPService();
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   int _logoTapCount = 0;
@@ -56,7 +127,12 @@ class _LoginScreenState extends State<LoginScreen>
   bool showAdminLogin = false;
   Timer? _tapResetTimer;
   Timer? _adminLoginTimer;
+  Timer? _otpTimer;
   bool isOtpSent = false;
+  int _remainingTime = 0;
+  bool isResendEnabled = true;
+  int resendCooldown = 60;
+  Timer? _resendCooldownTimer;
 
   @override
   void initState() {
@@ -78,6 +154,8 @@ class _LoginScreenState extends State<LoginScreen>
     otpController.dispose();
     _tapResetTimer?.cancel();
     _adminLoginTimer?.cancel();
+    _otpTimer?.cancel();
+    _resendCooldownTimer?.cancel();
     super.dispose();
   }
 
@@ -135,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen>
               });
 
               if (_logoTapCount == _requiredTapsForAdmin) {
-                _adminLoginTimer = Timer(Duration(seconds: 5), () {
+                _adminLoginTimer = Timer(Duration(seconds: 3), () {
                   Navigator.of(context).pop();
                   _showAdminLoginDialog();
                 });
@@ -232,12 +310,27 @@ class _LoginScreenState extends State<LoginScreen>
               keyboardType: TextInputType.number,
             ),
             SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _resendOtp,
-                child: Text('Resend OTP'),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'OTP expires in: ${_remainingTime ~/ 60}:${(_remainingTime % 60).toString().padLeft(2, '0')}',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                TextButton(
+                  onPressed: isResendEnabled ? _resendOtp : null,
+                  child: Text(
+                    isResendEnabled
+                        ? 'Resend OTP'
+                        : 'Resend in ${resendCooldown}s',
+                    style: TextStyle(
+                      color: isResendEnabled
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
           SizedBox(height: 24),
@@ -346,34 +439,122 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  void _sendOtp() {
-    setState(() {
-      isOtpSent = true;
+  Future<void> _sendOtp() async {
+    if (_formKey.currentState!.validate()) {
+      String otp = await _otpService.generateOTP(phoneController.text);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Your OTP is: $otp'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 5),
+        ),
+      );
+
+      setState(() {
+        isOtpSent = true;
+        _remainingTime = 300;
+      });
+
+      _startOtpTimer();
+    }
+  }
+
+  void _startOtpTimer() {
+    _otpTimer?.cancel();
+    _otpTimer = Timer.periodic(Duration(seconds: 1), (timer) async {
+      setState(() {
+        if (_remainingTime > 0) {
+          _remainingTime--;
+        } else {
+          _otpTimer?.cancel();
+          isOtpSent = false;
+          _otpService.clearOTP(phoneController.text);
+        }
+      });
     });
   }
 
-  void _resendOtp() {
+  Future<void> _resendOtp() async {
+    if (!isResendEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Please wait ${resendCooldown} seconds before requesting a new OTP'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await _otpService.clearOTP(phoneController.text);
+
+    String newOtp = await _otpService.generateOTP(phoneController.text);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('OTP has been resent to your phone.'),
+        content: Text('Your new OTP is: $newOtp'),
         behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 5),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),
       ),
     );
+
+    setState(() {
+      _remainingTime = 300;
+      isResendEnabled = false;
+    });
+
+    _startResendCooldown();
+
+    _startOtpTimer();
   }
 
-  void _login() async {
+  void _startResendCooldown() {
+    _resendCooldownTimer?.cancel();
+    _resendCooldownTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        if (resendCooldown > 0) {
+          resendCooldown--;
+        } else {
+          isResendEnabled = true;
+          resendCooldown = 60;
+          _resendCooldownTimer?.cancel();
+        }
+      });
+    });
+  }
+
+  Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       if (isOtpSent) {
-        if (otpController.text == '1234') {
-          final storageService = UserStorageService();
+        bool isValid = await _otpService.verifyOTP(
+          phoneController.text,
+          otpController.text,
+        );
 
+        if (isValid) {
+          final storageService = UserStorageService();
           final userData =
               await storageService.getUserDataByPhone(phoneController.text);
 
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('isLoggedIn', true);
+          await prefs.setString('userId', phoneController.text);
+
           if (userData != null) {
+            if (userData['email'] != null) {
+              await prefs.setString('userEmail', userData['email']);
+            } else {
+              await prefs.setString(
+                  'userEmail', '${phoneController.text}@default.com');
+            }
+
             await storageService.saveUserData(
               phoneNumber: phoneController.text,
               email: userData['email'] ?? '',
@@ -381,6 +562,9 @@ class _LoginScreenState extends State<LoginScreen>
               profilePicPath: userData['profilePicPath'],
             );
           } else {
+            await prefs.setString(
+                'userEmail', '${phoneController.text}@default.com');
+
             await storageService.saveUserData(
               phoneNumber: phoneController.text,
               email: '',
@@ -406,7 +590,7 @@ class _LoginScreenState extends State<LoginScreen>
           );
         }
       } else {
-        _sendOtp();
+        await _sendOtp();
       }
     }
   }

@@ -299,59 +299,67 @@ class _BusInfoScreenState extends State<BusInfoScreen>
 
   Future<List<LatLng>> _getRouteCoordinates(
       LatLng origin, LatLng destination) async {
-    final String apiKey =
-        'AIzaSyDM_H7xFxkgDsxbDOsqdeBBuzEyFkfpa4M';
+    final String apiKey = 'AIzaSyDM_H7xFxkgDsxbDOsqdeBBuzEyFkfpa4M';
     final String baseUrl =
         'https://maps.googleapis.com/maps/api/directions/json';
 
-    final response = await http.get(
-      Uri.parse('$baseUrl?origin=${origin.latitude},${origin.longitude}'
-          '&destination=${destination.latitude},${destination.longitude}'
-          '&mode=driving'
-          '&key=$apiKey'),
-    );
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl?origin=${origin.latitude},${origin.longitude}'
+            '&destination=${destination.latitude},${destination.longitude}'
+            '&mode=driving'
+            '&key=$apiKey'),
+      );
 
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
 
-      if (decoded['routes'].isEmpty) {
-        return [origin, destination];
+        if (decoded['status'] == 'OK' && decoded['routes'].isNotEmpty) {
+          final points = decoded['routes'][0]['overview_polyline']['points'];
+          return _decodePolyline(points);
+        }
       }
 
-      final points = decoded['routes'][0]['overview_polyline']['points'];
-      return _decodePolyline(points);
+      return [origin, destination];
+    } catch (e) {
+      developer.log('Error fetching route: $e');
+      return [origin, destination];
     }
-
-    return [origin, destination];
   }
 
   List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> points = [];
-    int index = 0, len = encoded.length;
-    int lat = 0, lng = 0;
+    int index = 0, lat = 0, lng = 0;
+    final len = encoded.length;
 
     while (index < len) {
-      int b, shift = 0, result = 0;
+      int shift = 0;
+      int result = 0;
+
       do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
+        result |= (encoded.codeUnitAt(index++) & 0x1F) << shift;
         shift += 5;
-      } while (b >= 0x20);
+      } while (index < len && (encoded.codeUnitAt(index - 1) >= 0x20));
+
       int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
       lat += dlat;
 
       shift = 0;
       result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
+
+      if (index < len) {
+        do {
+          result |= (encoded.codeUnitAt(index++) & 0x1F) << shift;
+          shift += 5;
+        } while (index < len && (encoded.codeUnitAt(index - 1) >= 0x20));
+
+        int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+        lng += dlng;
+      }
 
       points.add(LatLng(lat / 1E5, lng / 1E5));
     }
+
     return points;
   }
 
@@ -456,32 +464,36 @@ class _BusInfoScreenState extends State<BusInfoScreen>
     });
 
     List<LatLng> currentSegmentPoints = [];
-    if (remainingStops.length >= 1) {
+    List<LatLng> remainingRoutePoints = [];
+    if (remainingStops.isNotEmpty) {
       var nextStopData = _getStopData(remainingStops[0]);
-      LatLng nextStopPosition = LatLng(
-        nextStopData['latitude'],
-        nextStopData['longitude'],
-      );
-      currentSegmentPoints =
-          await _getRouteCoordinates(busPosition, nextStopPosition);
+      if (nextStopData.isNotEmpty) {
+        LatLng nextStopPosition = LatLng(
+          nextStopData['latitude'],
+          nextStopData['longitude'],
+        );
+        currentSegmentPoints =
+            await _getRouteCoordinates(busPosition, nextStopPosition);
+      }
     }
 
-    List<LatLng> remainingRoutePoints = [];
     for (int i = 0; i < remainingStops.length - 1; i++) {
       var currentStopData = _getStopData(remainingStops[i]);
       var nextStopData = _getStopData(remainingStops[i + 1]);
 
-      LatLng origin = LatLng(
-        currentStopData['latitude'],
-        currentStopData['longitude'],
-      );
-      LatLng destination = LatLng(
-        nextStopData['latitude'],
-        nextStopData['longitude'],
-      );
+      if (currentStopData.isNotEmpty && nextStopData.isNotEmpty) {
+        LatLng origin = LatLng(
+          currentStopData['latitude'],
+          currentStopData['longitude'],
+        );
+        LatLng destination = LatLng(
+          nextStopData['latitude'],
+          nextStopData['longitude'],
+        );
 
-      var segmentPoints = await _getRouteCoordinates(origin, destination);
-      remainingRoutePoints.addAll(segmentPoints);
+        var segmentPoints = await _getRouteCoordinates(origin, destination);
+        remainingRoutePoints.addAll(segmentPoints);
+      }
     }
 
     if (currentStop != previousStop) {
@@ -499,7 +511,6 @@ class _BusInfoScreenState extends State<BusInfoScreen>
             color: Colors.orange,
             width: 5,
           ),
-
         if (remainingRoutePoints.isNotEmpty)
           Polyline(
             polylineId: const PolylineId('planned_route'),
@@ -520,7 +531,6 @@ class _BusInfoScreenState extends State<BusInfoScreen>
           icon:
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
         ),
-
         ...remainingStops.map((stopName) {
           var stopData = _getStopData(stopName);
           bool isCurrentStop = stopName == currentStop;

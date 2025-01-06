@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late Timer _timer;
   List<Map<String, dynamic>> filteredBuses = [];
   final PanelController _panelController = PanelController();
+  TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _requestLocationPermission();
     _getCurrentLocation().then((_) => _updateNearbyBuses());
 
+    _searchController.addListener(_onSearchChanged);
     _timer = Timer.periodic(Duration(seconds: 10), (timer) {
       _updateNearbyBuses();
     });
@@ -38,8 +40,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _timer.cancel();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final searchTerm = _searchController.text.toLowerCase();
+    setState(() {
+      filteredBuses = nearbyBuses.where((bus) {
+        return bus['routeId'].toString().toLowerCase().contains(searchTerm);
+      }).toList();
+      _updateMarkers();
+    });
   }
 
   Future<void> _requestLocationPermission() async {
@@ -252,18 +265,35 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black12,
+                      offset: Offset(0, 2),
                       blurRadius: 10,
+                      color: Colors.black.withOpacity(0.1),
                     ),
                   ],
                 ),
                 child: TextField(
+                  controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Search and Track Bus',
-                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search by route number',
+                    hintStyle: TextStyle(color: Colors.grey[400]),
+                    prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, color: Colors.grey[400]),
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged();
+                            },
+                          )
+                        : null,
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
                   ),
+                  style: TextStyle(fontSize: 16),
+                  textAlignVertical: TextAlignVertical.center,
                 ),
               ),
             ),
@@ -333,4 +363,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

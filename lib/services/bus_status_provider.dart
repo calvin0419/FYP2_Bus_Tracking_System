@@ -2,10 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:bus_tracking_system/services/bus_status_model.dart';
 import 'package:bus_tracking_system/services/bus_status_storage.dart';
 
+
 class BusStatusProvider extends ChangeNotifier {
   List<BusStatus> _statusUpdates = [];
+  bool _isLoading = false;
 
   List<BusStatus> get statusUpdates => _statusUpdates;
+  bool get isLoading => _isLoading;
 
   Future<void> loadStatusUpdates() async {
     try {
@@ -13,6 +16,23 @@ class BusStatusProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('Error loading status updates: $e');
+    }
+  }
+
+  Future<void> refreshStatusUpdates() async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      await loadStatusUpdates();
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      print('Error refreshing status updates: $e');
+      throw e;
     }
   }
 
